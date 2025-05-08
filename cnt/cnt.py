@@ -1,12 +1,13 @@
-import tkinter as tk
+import glob, tkinter as tk
 from tkinter import filedialog, ttk
 import os
 import shutil
-import subprocess
 import time
 import sys
 import platform
-
+import subprocess
+from pathlib import Path
+from typing import Dict, List, Union, Any
 
 class TKFolderSelector:
     def __init__(self):
@@ -266,10 +267,31 @@ class MakeDirectory:
             print(f"An error occurred while creating project directory: {e}")
             return None
 
-
 class AppleScript:
     def __init__(self, name="Alpha"):
         self.name = name
+
+    # AppleScript to close Finder
+
+    def close_finder(self) -> bool:
+        """
+        Attempts to quit the Finder.
+        """
+        script = '''
+            tell application "Finder"
+                quit
+            end tell
+            '''
+
+        result = subprocess.run(
+        ["osascript", "-e", script],
+        capture_output=True, text=True)
+
+        if result.returncode != 0:
+            print("✗ Failed to close Finder:",
+                  result.stderr.strip() or "(no message)")
+            return False
+        return True
 
     def open_extensis_connect(self):
         """
@@ -279,20 +301,17 @@ class AppleScript:
         - True if successful, False otherwise
         """
         try:
-            # Open Extensis Connect
             open_command = 'tell application "Extensis Connect" to activate'
             result = subprocess.run(['osascript', '-e', open_command],
                                     capture_output=True,
                                     text=True)
 
-            # Check if the open command was successful
             if result.returncode == 0:
                 print("Extensis Connect has been opened successfully.")
                 return True
             else:
                 print(f"Error opening Extensis Connect: {result.stderr}")
                 return False
-
         except Exception as e:
             print(f"An unexpected error occurred while opening Extensis Connect: {e}")
             return False
@@ -305,13 +324,11 @@ class AppleScript:
         - True if successful, False otherwise
         """
         try:
-            # Refresh command using Command+R
             refresh_command = 'tell application "System Events" to tell process "Extensis Connect" to keystroke "r" using command down'
             result = subprocess.run(['osascript', '-e', refresh_command],
                                     capture_output=True,
                                     text=True)
 
-            # Check if the refresh command was successful
             if result.returncode == 0:
                 time.sleep(4)
                 print("Extensis Connect has been refreshed successfully.")
@@ -319,9 +336,135 @@ class AppleScript:
             else:
                 print(f"Error refreshing Extensis Connect: {result.stderr}")
                 return False
-
         except Exception as e:
             print(f"An unexpected error occurred while refreshing Extensis Connect: {e}")
+            return False
+
+    def select_indesign_file(self):
+        """
+        Prompts the user to select an InDesign file.
+
+        Returns:
+        - str: Path to the selected InDesign file, or None if no file is selected
+        """
+        root = tk.Tk()
+        root.withdraw()  # Hide the root window
+
+        file_path = filedialog.askopenfilename(
+            title="Select an InDesign file",
+            filetypes=[("InDesign Files", "*.indd")])
+
+        if file_path:
+            print(f"Selected file: {file_path}")
+            return file_path
+        else:
+            print("No file selected.")
+            return None
+
+    def open_indesign_file(self, file_path):
+        """
+        Opens an InDesign file with Adobe InDesign.
+
+        Args:
+        - file_path (str): Path to the InDesign file
+        """
+        try:
+            applescript_cmd = f'''
+            tell application "Adobe InDesign 2025"
+                activate
+                open "{file_path}"
+            end tell
+            '''
+
+            result = subprocess.run(['osascript', '-e', applescript_cmd],
+                                    capture_output=True,
+                                    text=True)
+
+            if result.returncode == 0:
+                print(f"Successfully opened {os.path.basename(file_path)} with InDesign.")
+                self.press_skip_on_missing_fonts_dialog()
+            else:
+                print(f"Error opening file with InDesign: {result.stderr}")
+        except Exception as e:
+            print(f"An unexpected error occurred while opening {os.path.basename(file_path)}: {e}")
+
+    def press_skip_on_missing_fonts_dialog(self):
+        """
+        Presses the "Esc" key twice to close any dialog in Adobe InDesign.
+        No dialog detection - simply presses Escape keys after a delay.
+
+        Returns:
+            - True if both button presses were executed without errors, False otherwise
+        """
+        try:
+            # Initial delay to give InDesign time to fully launch or show any dialogs
+            print("Executing Escape key sequence...")
+
+            # Focus on InDesign application first
+            applescript_focus_cmd = '''
+            tell application "Adobe InDesign 2025"
+                activate
+            end tell
+            '''
+            subprocess.run(['osascript', '-e', applescript_focus_cmd], check=True)
+
+            # Short pause after focusing
+            time.sleep(3)
+
+            # Define AppleScript to press Escape key
+            applescript_escape_cmd = '''
+            tell application "System Events"
+                key code 53  # Direct key code for Escape key
+            end tell
+            '''
+
+            # First Escape press
+            subprocess.run(['osascript', '-e', applescript_escape_cmd], check=True)
+            print("First Escape key sent")
+
+            # Brief pause between key presses
+            time.sleep(1)
+
+            # Second Escape press
+            subprocess.run(['osascript', '-e', applescript_escape_cmd], check=True)
+            print("Second Escape key sent")
+
+            return True
+
+        except Exception as e:
+            print(f"Error executing Escape key sequence: {e}")
+            return False
+
+    def is_extensis_connect_running(self):
+        """
+        Checks if Extensis Connect is currently running.
+
+        Returns:
+        - True if Extensis Connect is running
+        - False if it's not running or an error occurred
+        """
+        try:
+            # Use the 'ps' command to check for the Extensis Connect process
+            process_path = "/Applications/Extensis Connect.app/Contents/MacOS/Extensis Connect"
+
+            # Create the command to run
+            command = f"ps -ef | grep '{process_path}' | grep -v grep"
+
+            # Run the command and get the output
+            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+
+            # If output contains anything, the process is running
+            is_running = bool(result.stdout.strip())
+
+            if is_running:
+                print("Extensis Connect is currently running.")
+            else:
+                print("Extensis Connect is not running.")
+
+            return is_running
+
+        except Exception as e:
+            print(f"Error checking if Extensis Connect is running: {e}")
             return False
 
     def open_and_refresh_extensis_connect(self, load_time=10):
@@ -373,584 +516,289 @@ class AppleScript:
             print(f"An unexpected error occurred while minimizing Extensis Connect: {e}")
             return False
 
-    def open_and_refresh_extensis_connect(self, load_time=10, minimize_after=True):
-        """
-        Opens Extensis Connect, refreshes it after a specified loading time,
-        and optionally minimizes it afterward.
-
-        Args:
-        load_time (int): Number of seconds to wait before refreshing. Default is 10 seconds.
-        minimize_after (bool): Whether to minimize the app after refreshing. Default is True.
-
-        Returns:
-        - True if all operations were successful, False otherwise
-        """
-        # Open the application
-        open_success = self.open_extensis_connect()
-
-        if not open_success:
-            return False
-
-        # Wait for the application to load
-        print(f"Waiting {load_time} seconds for Extensis Connect to load...")
-        time.sleep(load_time)
-
-        # Refresh the application
-        refresh_success = self.refresh_extensis_connect()
-
-        if not refresh_success:
-            return False
-
-        # Minimize if requested
-        if minimize_after:
-            return self.minimize_extensis_connect()
-
-        return True
-
-    def is_extensis_connect_running(self):
-        """
-        Checks if Extensis Connect is currently running.
-
-        Returns:
-        - True if Extensis Connect is running
-        - False if it's not running or an error occurred
-        """
-        try:
-            # Use the 'ps' command to check for the Extensis Connect process
-            process_path = "/Applications/Extensis Connect.app/Contents/MacOS/Extensis Connect"
-
-            # Create the command to run
-            command = f"ps -ef | grep '{process_path}' | grep -v grep"
-
-            # Run the command and get the output
-            result = subprocess.run(command, shell=True, capture_output=True, text=True)
-
-            # If output contains anything, the process is running
-            is_running = bool(result.stdout.strip())
-
-            if is_running:
-                print("Extensis Connect is currently running.")
-            else:
-                print("Extensis Connect is not running.")
-
-            return is_running
-
-        except Exception as e:
-            print(f"Error checking if Extensis Connect is running: {e}")
-            return False
-
-    # 4/3/2025
-
-    def open_file_with_indesign(self, file_path):
-        """
-        Opens a specific file with Adobe InDesign 2025.
-
-        Args:
-        file_path (str): Path to the file to open
-
-        Returns:
-        - True if successful, False otherwise
-        """
-        try:
-            # Ensure file exists
-            if not os.path.isfile(file_path):
-                print(f"File does not exist: {file_path}")
-                return False
-
-            print(f"Opening file: {file_path}")
-
-            # Prepare AppleScript command to open file with InDesign
-            applescript_cmd = f'''
-            tell application "Adobe InDesign 2025"
-                activate
-                open "{file_path}"
-            end tell
-            '''
-
-            # Execute AppleScript
-            result = subprocess.run(['osascript', '-e', applescript_cmd],
-                                    capture_output=True,
-                                    text=True)
-
-            # Check if command was successful
-            if result.returncode == 0:
-                print(f"Successfully opened {os.path.basename(file_path)} with InDesign.")
-
-                # Check for missing links dialog
-                has_missing_links = self.check_for_missing_links_dialog()
-                if has_missing_links:
-                    print("Missing links detected. Exiting process.")
-                    return False
-
-                return True
-            else:
-                print(f"Error opening file with InDesign: {result.stderr}")
-                return False
-
-        except Exception as e:
-            print(f"An unexpected error occurred while opening {os.path.basename(file_path)}: {e}")
-            return False
-
-    def check_for_missing_links_dialog(self, wait_time=8):
-        """
-        Checks if Adobe InDesign 2025 has displayed a dialog about missing links.
-
-        Args:
-        wait_time (int): Time to wait for dialog to appear in seconds
-
-        Returns:
-        - True if missing links dialog was detected, False otherwise
-        """
-        try:
-            # Wait briefly for any dialog to appear
-            time.sleep(wait_time)
-
-            # AppleScript to check for dialog with missing links message
-            applescript_cmd = '''
-            tell application "System Events"
-                tell process "Adobe InDesign 2025"
-                    set dialogExists to false
-
-                    -- Check if any dialog exists
-                    if exists (window 1 whose role is "AXDialog") then
-                        set dialogWindow to window 1 whose role is "AXDialog"
-
-                        -- Check static text elements for the target message
-                        repeat with textElement in static texts of dialogWindow
-                            set textContent to value of textElement
-
-                            -- Look for text about missing links
-                            if textContent contains "missing links" or textContent contains "missing" or textContent contains "Links panel" then
-                                set dialogExists to true
-                                exit repeat
-                            end if
-                        end repeat
-                    end if
-
-                    return dialogExists
-                end tell
-            end tell
-            '''
-
-            # Execute AppleScript
-            result = subprocess.run(['osascript', '-e', applescript_cmd],
-                                    capture_output=True,
-                                    text=True)
-
-            # Parse result - AppleScript returns "true" or "false" as strings
-            is_dialog_present = result.stdout.strip().lower() == "true"
-
-            if is_dialog_present:
-                print("Missing links dialog detected.")
-
-                # Optional: Click "OK" or close the dialog
-                self.close_missing_links_dialog()
-
-            return is_dialog_present
-
-        except Exception as e:
-            print(f"Error checking for missing links dialog: {e}")
-            return False
-
-    def close_missing_links_dialog(self):
-        """
-        Closes the missing links dialog if it's open.
-        """
-        try:
-            # AppleScript to click OK button on the dialog
-            applescript_cmd = '''
-            tell application "System Events"
-                tell process "Adobe InDesign 2025"
-                    if exists (window 1 whose role is "AXDialog") then
-                        -- Try to click OK or Cancel button
-                        try
-                            click button "OK" of window 1 whose role is "AXDialog"
-                        on error
-                            try
-                                click button "Cancel" of window 1 whose role is "AXDialog"
-                            end try
-                        end try
-                    end if
-                end tell
-            end tell
-            '''
-
-            subprocess.run(['osascript', '-e', applescript_cmd],
-                           capture_output=True,
-                           text=True)
-
-        except Exception as e:
-            print(f"Error closing missing links dialog: {e}")
+    from pathlib import Path
+    from typing import Optional, Dict
 
     def select_and_process_indesign_files(self):
         """
-        Prompts user to select a folder containing InDesign files and processes them.
-        Detects and logs files with missing links.
+        Select an InDesign file, open it, and press the "Escape" key twice to close any dialogs.
 
         Returns:
-        - dict: Summary of processing results
+        - dict: The results of the processing
+        """
+        result = {"results": []}
+
+        # Step 1: Select an InDesign file
+        selected_file = self.select_indesign_file()
+
+        if selected_file:
+            # Step 2: Open the selected InDesign file
+            self.open_indesign_file(selected_file)
+
+            # Step 3: Press the Escape key twice
+            print("Handling potential dialogs...")
+            if self.press_skip_on_missing_fonts_dialog():
+                result["results"].append({"file": selected_file, "success": True})
+                print("Dialogs handled successfully.")
+            else:
+                result["results"].append({"file": selected_file, "success": False})
+                print("Error handling dialogs.")
+        else:
+            result["results"].append({"file": None, "success": False})
+            print("No file selected.")
+
+        return result
+
+    def package_indesign_file(
+            self,
+            folder_id: str,
+            project_name: Optional[str] = None
+    ) -> Dict[str, str | bool]:
+        """
+        Package the *currently‑open* InDesign document into
+        ~/Documents/Archived_Projects/<project_name>/<folder_id>_Layout.
+
+        Args
+        ----
+        folder_id     unique numeric / text ID stamped on the Layout folder
+        project_name  optional project folder; defaults to "Unnamed"
+
+        Returns
+        -------
+        dict with 'success', 'message' and (on success) 'package_path'
         """
         try:
-            # Create the base AppleScript to select a folder and get all .indd files
-            folder_selection_script = '''
-            tell application "Finder"
-                set selectedFolder to choose folder with prompt "Select a folder containing InDesign files"
-                set inddFiles to files of selectedFolder whose name extension is "indd"
-                set filePaths to {}
+            # ------------------------------------------------------------------ #
+            # 1. Build the destination folder on the Mac file‑system
+            # ------------------------------------------------------------------ #
+            root = Path.home() / "Documents" / "Archived_Projects"
+            project_dir = root / (project_name or "Unnamed")
+            layout_dir = project_dir / f"{folder_id}_Layout"
+            layout_dir.mkdir(parents=True, exist_ok=True)
 
-                repeat with eachFile in inddFiles
-                    set end of filePaths to POSIX path of (eachFile as alias)
-                end repeat
+            # ------------------------------------------------------------------ #
+            # 2. Build the AppleScript
+            # ------------------------------------------------------------------ #
+            # Escape any quotes in the POSIX path before embedding
+            dest_root_posix = str(layout_dir).replace('"', r'\"')
 
-                return filePaths
-            end tell
-            '''
+            applescript = f'''
+    use AppleScript version "2.7"
+    use scripting additions
 
-            # Execute AppleScript to get folder and files
-            result = subprocess.run(['osascript', '-e', folder_selection_script],
-                                    capture_output=True,
-                                    text=True)
+    -- destination folder provided by Python
+    set destRootPOSIX to "{dest_root_posix}"
+    set destRootAlias to POSIX file destRootPOSIX as alias
 
-            if result.returncode != 0:
-                print(f"Error selecting folder: {result.stderr}")
-                return {"success": False, "message": "Error selecting folder", "processed": 0, "failed": 0}
+    tell application "Adobe InDesign 2025"
+        activate
+        if (count of documents) is 0 then
+            error "No document is open in InDesign."
+        end if
 
-            # Parse the result - AppleScript returns file paths as comma-separated values
-            file_paths_output = result.stdout.strip()
+        -- suppress all UI
+        set originalLevel to user interaction level of script preferences
+        set user interaction level of script preferences to never interact
 
-            # If empty output, no files were selected
-            if not file_paths_output:
-                print("No InDesign files found in the selected folder.")
-                return {"success": False, "message": "No InDesign files found", "processed": 0, "failed": 0}
+        try
+            set myDoc to document 1
+            set nm to name of myDoc -- e.g. "Brochure.indd"
+            if nm ends with ".indd" then set nm to text 1 thru -6 of nm
 
-            # Split the paths - AppleScript returns them comma-separated
-            file_paths = [path.strip() for path in file_paths_output.split(',')]
+            -- create a *_Packaged folder for this document
+            set pkgPathPOSIX to destRootPOSIX & "/" & nm & "_Packaged"
+            do shell script "mkdir -p " & quoted form of pkgPathPOSIX
+            set pkgFolderAlias to POSIX file pkgPathPOSIX as alias
 
-            # Setup UI code (unchanged)...
-            root = tk.Tk()
-            root.withdraw()
-            status_window = tk.Toplevel(root)
-            status_window.title("Processing InDesign Files")
-            status_window.attributes('-topmost', True)
-            # Window size and position
-            window_width = 500
-            window_height = 250
-            screen_width = status_window.winfo_screenwidth()
-            screen_height = status_window.winfo_screenheight()
-            center_x = int((screen_width - window_width) / 2)
-            center_y = int((screen_height - window_height) / 2)
-            status_window.geometry(f"{window_width}x{window_height}+{center_x}+{center_y}")
+            -- package with long‑form option labels (per dictionary)
+            tell myDoc to package ¬
+                to pkgFolderAlias ¬
+                copying fonts yes ¬
+                copying linked graphics yes ¬
+                copying profiles yes ¬
+                updating graphics yes ¬
+                including hidden layers yes ¬
+                ignore preflight errors yes ¬
+                include idml no ¬
+                include pdf no ¬
+                creating report yes
 
-            # Add status label and progress bar
-            status_label = tk.Label(status_window, text="Starting processing...")
-            status_label.pack(pady=20)
-            file_label = tk.Label(status_window, text="")
-            file_label.pack(pady=10)
-            progress = ttk.Progressbar(status_window, length=400, mode='determinate')
-            progress.pack(pady=20)
-            progress['maximum'] = len(file_paths)
+            set user interaction level of script preferences to originalLevel
+            return pkgPathPOSIX
+        on error errMsg number errNum
+            set user interaction level of script preferences to originalLevel
+            error errMsg number errNum
+        end try
+    end tell
+    '''
 
-            # Initialize counters and results
-            successful = 0
-            failed = 0
-            results = []
-            missing_links_log = []
+            # ------------------------------------------------------------------ #
+            # 3. Run the AppleScript (feed via stdin instead of multiple -e flags)
+            # ------------------------------------------------------------------ #
+            result = subprocess.run(
+                ["/usr/bin/osascript", "-"],  # "-" = read script from stdin
+                input=applescript,
+                text=True,
+                capture_output=True,
+                check=False
+            )
 
-            # Create log directory and file
-            log_dir = os.path.expanduser("~/Documents/InDesign_Processing_Logs")
-            os.makedirs(log_dir, exist_ok=True)
-            timestamp = time.strftime("%Y%m%d-%H%M%S")
-            log_file_path = os.path.join(log_dir, f"indesign_processing_log_{timestamp}.txt")
+            if result.returncode == 0:
+                pkg_path = result.stdout.strip()
+                return {
+                    "success": True,
+                    "message": f"Package created at {pkg_path}",
+                    "package_path": pkg_path
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.stderr.strip()
+                }
 
-            with open(log_file_path, "w") as log_file:
-                log_file.write(f"InDesign Processing Log - {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                log_file.write("=" * 50 + "\n\n")
-
-                # Process each file individually with improved script
-                for i, file_path in enumerate(file_paths):
-                    file_name = os.path.basename(file_path)
-
-                    # Update status
-                    status_label.config(text=f"Processing file {i + 1} of {len(file_paths)}")
-                    file_label.config(text=file_name)
-                    progress['value'] = i
-                    status_window.update()
-
-                    # Log file being processed
-                    log_file.write(f"Processing: {file_path}\n")
-
-                    # IMPROVED: More robust AppleScript with better dialog detection and timeout
-                    process_script = f'''
-                    tell application "Adobe InDesign 2025"
-                        set fileProcessed to false
-                        set hasMissingLinks to false
-                        set missingLinksCount to 0
-                        set dialogMessage to ""
-
-                        -- Make sure InDesign is frontmost
-                        activate
-
-                        -- Set a timeout for script operations
-                        with timeout of 60 seconds
-                            try
-                                -- Open the file
-                                open "{file_path}"
-                                set fileProcessed to true
-
-                                -- Function to check for dialog
-                                on checkForDialog()
-                                    tell application "System Events"
-                                        if exists (process "Adobe InDesign 2025") then
-                                            if exists (window 1 of process "Adobe InDesign 2025" whose subrole is "AXDialog") then
-                                                return true
-                                            else if exists (window 1 of process "Adobe InDesign 2025" whose role is "AXDialog") then
-                                                return true
-                                            end if
-                                        end if
-                                        return false
-                                    end tell
-                                end checkForDialog
-
-                                -- Variable to track progress
-                                set dialogFound to false
-                                set dialogChecks to 0
-                                set maxChecks to 10
-
-                                -- Loop to check for dialog appearing (incremental checks)
-                                repeat until dialogFound or dialogChecks ≥ maxChecks
-                                    delay 0.5
-                                    set dialogChecks to dialogChecks + 1
-                                    set dialogFound to my checkForDialog()
-                                end repeat
-
-                                -- Process dialog if found
-                                if dialogFound then
-                                    tell application "System Events"
-                                        tell process "Adobe InDesign 2025"
-                                            set dialogWin to window 1 whose subrole is "AXDialog" or role is "AXDialog"
-
-                                            -- Get all static text elements
-                                            set allTexts to {{}}
-                                            set dialogText to ""
-
-                                            -- Try different approaches to get dialog text
-                                            try
-                                                set allTexts to get value of every static text of dialogWin
-                                            on error
-                                                try
-                                                    set allTexts to get name of every static text of dialogWin
-                                                end try
-                                            end try
-
-                                            -- Build complete dialog text
-                                            repeat with t in allTexts
-                                                set dialogText to dialogText & t & " "
-                                            end repeat
-
-                                            -- Check if it's a missing link dialog various ways
-                                            if dialogText contains "missing link" or dialogText contains "Missing Link" or dialogText contains "links are missing" then
-                                                set hasMissingLinks to true
-                                                set dialogMessage to dialogText
-
-                                                -- Extract the number through different patterns
-                                                if dialogText contains "contains" then
-                                                    set AppleScript's text item delimiters to " "
-                                                    set textItems to every text item of dialogText
-                                                    repeat with i from 1 to (count of textItems)
-                                                        set thisItem to item i of textItems
-                                                        if thisItem is "contains" and i < (count of textItems) then
-                                                            try
-                                                                set nextItem to item (i + 1) of textItems
-                                                                set missingLinksCount to nextItem as integer
-                                                            end try
-                                                        end if
-                                                    end repeat
-                                                else if dialogText contains "links are missing" then
-                                                    -- Different pattern for multiple links
-                                                    set AppleScript's text item delimiters to " "
-                                                    set textItems to every text item of dialogText
-                                                    repeat with i from 1 to (count of textItems)
-                                                        set thisItem to item i of textItems
-                                                        if i < (count of textItems) and item (i + 1) of textItems is "links" then
-                                                            try
-                                                                set missingLinksCount to thisItem as integer
-                                                            end try
-                                                        end if
-                                                    end repeat
-                                                end if
-
-                                                -- Click OK to dismiss the dialog - try different button labels
-                                                try
-                                                    if exists (button "OK" of dialogWin) then
-                                                        click button "OK" of dialogWin
-                                                    else if exists (button "Ok" of dialogWin) then
-                                                        click button "Ok" of dialogWin
-                                                    else
-                                                        -- Last resort - try to find any button and click it
-                                                        click button 1 of dialogWin
-                                                    end if
-                                                on error
-                                                    -- If clicking fails, try to press return key
-                                                    key code 36 -- Return key
-                                                end try
-                                            end if
-                                        end tell
-                                    end tell
-                                end if
-
-                                -- Close the document safely
-                                tell application "Adobe InDesign 2025"
-                                    if exists document 1 then
-                                        set docRef to document 1
-                                        close docRef saving no
-                                    end if
-                                end tell
-
-                            on error errMsg
-                                set fileProcessed to false
-
-                                -- Try to close any open documents if there was an error
-                                try
-                                    tell application "Adobe InDesign 2025"
-                                        if exists document 1 then
-                                            close document 1 saving no
-                                        end if
-                                    end tell
-                                end try
-
-                                return "ERROR: " & errMsg
-                            end try
-                        end timeout
-
-                        if hasMissingLinks then
-                            return "MISSING_LINKS:" & missingLinksCount & ":" & dialogMessage
-                        else if fileProcessed then
-                            return "SUCCESS"
-                        else
-                            return "FAILED"
-                        end if
-                    end tell
-                    '''
-
-                    # Execute with timeout at Python level too
-                    try:
-                        result = subprocess.run(['osascript', '-e', process_script],
-                                                capture_output=True,
-                                                text=True,
-                                                timeout=90)  # 90-second timeout
-
-                        output = result.stdout.strip()
-
-                        # Process the result - unchanged from your original code
-                        if output.startswith("MISSING_LINKS:"):
-                            parts = output.split(":", 2)
-                            count = parts[1] if len(parts) > 1 else "unknown"
-                            message = parts[2] if len(parts) > 2 else "Missing links detected"
-
-                            log_message = f"WARNING: File '{file_name}' contains {count} missing links and needs review.\n"
-                            log_message += f"Dialog message: {message}\n"
-                            log_file.write(log_message + "\n")
-
-                            missing_links_log.append({
-                                "file": file_name,
-                                "path": file_path,
-                                "missing_links_count": count,
-                                "message": message
-                            })
-
-                            failed += 1
-                            results.append({"file": file_name, "success": False, "reason": "missing_links"})
-
-                        elif output == "SUCCESS":
-                            successful += 1
-                            results.append({"file": file_name, "success": True})
-                            log_file.write("Result: Successfully processed\n\n")
-
-                        elif output.startswith("ERROR:"):
-                            error_msg = output.replace("ERROR:", "").strip()
-                            failed += 1
-                            results.append(
-                                {"file": file_name, "success": False, "reason": "error", "message": error_msg})
-                            log_file.write(f"Result: FAILED - {error_msg}\n\n")
-
-                        else:
-                            failed += 1
-                            results.append({"file": file_name, "success": False, "reason": "unknown"})
-                            log_file.write("Result: FAILED - Missing links\n\n")
-
-                    except subprocess.TimeoutExpired:
-                        # Handle the case where the script times out
-                        failed += 1
-                        results.append({"file": file_name, "success": False, "reason": "timeout"})
-                        log_file.write(f"Result: FAILED - Script timeout after 90 seconds\n\n")
-
-                        # Force quit InDesign if it's stuck
-                        try:
-                            force_quit_script = '''
-                            tell application "System Events"
-                                if exists process "Adobe InDesign 2025" then
-                                    do shell script "killall 'Adobe InDesign 2025'"
-                                end if
-                            end tell
-                            '''
-                            subprocess.run(['osascript', '-e', force_quit_script],
-                                           capture_output=True,
-                                           timeout=10)
-                            # Give it a moment before continuing
-                            time.sleep(2)
-                        except:
-                            pass
-
-                # Write summary to log
-                log_file.write("\n" + "=" * 50 + "\n")
-                log_file.write(
-                    f"SUMMARY: Processed {successful} files successfully. Failed to process {failed} files.\n")
-
-                if missing_links_log:
-                    log_file.write("\nFiles with missing links that need review:\n")
-                    for entry in missing_links_log:
-                        log_file.write(f"- {entry['file']}: {entry['missing_links_count']} missing links\n")
-
-            # Create summary
-            summary = {
-                "success": failed == 0,
-                "message": f"Processed {successful} files successfully. Failed to process {failed} files.",
-                "processed": successful,
-                "failed": failed,
-                "results": results,
-                "missing_links_files": missing_links_log,
-                "log_file": log_file_path
+        except Exception as exc:
+            return {
+                "success": False,
+                "error": str(exc)
             }
 
-            # Show final status
-            if missing_links_log:
-                status_text = f"Processed {successful} files successfully.\n{len(missing_links_log)} files have missing links.\nSee log file for details."
+    def count_indesign_files(self):
+        """
+        Pops up a folder‑chooser, counts *.indd files inside, and
+        returns (paths, integer_count).  If the user cancels, both
+        values are empty/zero so callers can bail out gracefully.
+        """
+        root = tk.Tk();
+        root.withdraw()
+        folder = filedialog.askdirectory(
+            title="Choose the folder that contains your InDesign files"
+        )
+        if not folder:  # user hit Cancel
+            return [], 0
+
+        paths = glob.glob(os.path.join(folder, "*.indd"))
+        return paths, len(paths)
+
+    def count_cover_indesign_files(self):
+        """
+        Pops up a file‑chooser for a single .indd file and
+        returns (paths, integer_count). If the user cancels,
+        both values are empty/zero so callers can bail out gracefully.
+        """
+        root = tk.Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename(
+            title="Select your Full Cover InDesign file",
+            filetypes=[("InDesign Files", "*.indd")],
+        )
+        if not file_path:  # user hit Cancel
+            return [], 0
+
+        return [file_path], 1
+
+    # ──────────────────────────────────────────────────────────────
+    # NEW: close docs and quit InDesign so the next run is clean
+    # ──────────────────────────────────────────────────────────────
+    def close_indesign(self):
+        """
+        Closes every open document (no save) and quits the app.
+        Based on Adobe’s CloseDocument/CloseAll examples.
+        """
+        script = '''
+        tell application "Adobe InDesign 2025"
+            if (count documents) > 0 then
+                tell documents to close saving no
+            end if
+            quit saving no
+        end tell
+        '''
+        subprocess.run(["osascript", "-e", script],
+                       capture_output=True, text=True)
+
+
+class FileCheck:
+    def __init__(self, name="Alpha"):
+        self.name = name
+
+    def verify_nonzero_file_sizes(self, root_dir: str) -> Dict[str, Any]:
+        """
+        Recursively check every file inside *root_dir* and all its subdirectories
+        to ensure each file's size is larger than 0 bytes.
+
+        Parameters
+        ----------
+        root_dir : str
+            Path to the root directory to search
+
+        Returns
+        -------
+        dict with:
+            success        : True if every file passed
+            empty_files    : list of file paths whose size == 0
+            checked_count  : total number of regular files examined
+        """
+        empty_files: List[str] = []
+        checked: int = 0
+
+        # First, verify the root_dir exists and is actually a directory
+        if not os.path.exists(root_dir):
+            print(f"⚠️  Directory does not exist: {root_dir}")
+            return {
+                "success": False,
+                "empty_files": [],
+                "checked_count": 0,
+                "error": f"Directory does not exist: {root_dir}"
+            }
+
+        if not os.path.isdir(root_dir):
+            print(f"⚠️  Not a directory: {root_dir}")
+            return {
+                "success": False,
+                "empty_files": [],
+                "checked_count": 0,
+                "error": f"Not a directory: {root_dir}"
+            }
+
+        # Proceed with recursive file checking (including all subdirectories)
+        print(f"Starting recursive file size check on directory: {root_dir}")
+
+        for dirpath, _dirs, filenames in os.walk(root_dir):
+            # This will go through the root directory and all subdirectories
+            current_dir = os.path.relpath(dirpath, root_dir)
+            if current_dir == ".":
+                current_dir = "root directory"
             else:
-                status_text = summary["message"]
+                print(f"Checking subdirectory: {current_dir}")
 
-            status_label.config(text=status_text)
-            file_label.config(text=f"Log saved to: {log_file_path}")
-            progress['value'] = len(file_paths)
-            status_window.update()
+            for fname in filenames:
+                fpath = os.path.join(dirpath, fname)
+                try:
+                    # Check if it's a file (not a symlink or other special file)
+                    if os.path.isfile(fpath):
+                        file_size = os.path.getsize(fpath)
+                        if file_size == 0:
+                            empty_files.append(fpath)
+                            # Print the full absolute path of the empty file for easier identification
+                            print(f"🚫 EMPTY FILE DETECTED: {os.path.abspath(fpath)} (0 KB)")
+                        checked += 1
+                except OSError as exc:
+                    # Something went wrong reading the file size
+                    print(f"⚠️  Could not stat {fpath}: {exc}")
 
-            # Add a close button
-            close_button = tk.Button(status_window, text="Close",
-                                     command=lambda: [status_window.destroy(), root.destroy()])
-            close_button.pack(pady=10)
+        # Final summary and return results
+        print(f"File check complete: examined {checked} files across all subdirectories")
+        if empty_files:
+            print(f"⚠️ WARNING: Found {len(empty_files)} empty (0 KB) files:")
+            for idx, empty_file in enumerate(empty_files, 1):
+                print(f"  {idx}. {os.path.abspath(empty_file)}")
+        else:
+            print("✅ No empty files found - all files have content!")
 
-            print(summary["message"])
-            if missing_links_log:
-                print(f"{len(missing_links_log)} files have missing links and need review.")
-                print(f"See log file for details: {log_file_path}")
+        return {
+            "success": len(empty_files) == 0,
+            "empty_files": empty_files,
+            "checked_count": checked,
+            "directories_checked": sum(1 for _ in os.walk(root_dir))  # Count of directories processed
+        }
 
-            # Wait for user to close the status window
-            status_window.protocol("WM_DELETE_WINDOW", lambda: [status_window.destroy(), root.destroy()])
-            root.wait_window(status_window)
 
-            return summary
-
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            if 'root' in locals():
-                root.destroy()
-            return {"success": False, "message": f"Error: {str(e)}", "processed": 0, "failed": 0}
