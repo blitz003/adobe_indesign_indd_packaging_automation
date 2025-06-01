@@ -152,6 +152,37 @@ class TKFolderSelector:
 
         return creation_status
 
+    def check_for_missing_print_pdf_files(self, project_layout_path: str, folder_id_print: str) -> bool:
+        """
+        Check whether any PDF files in `project_layout_path` start with `folder_id_print`.
+
+        Args:
+            project_layout_path (str): Absolute or relative path to the layout folder.
+            folder_id_print (str): Filename prefix that identifies the print PDFs (e.g., "11492_Print").
+
+        Returns:
+            bool: True if at least one matching file exists, False otherwise.
+        """
+        layout_path = Path(project_layout_path)
+
+        if not layout_path.is_dir():
+            raise FileNotFoundError(f"{layout_path} is not a directory or does not exist.")
+
+        # Look for PDFs that start with the required prefix
+        matches = [
+            p for p in layout_path.iterdir()
+            if p.is_file() and p.suffix.lower() == ".pdf" and p.name.startswith(folder_id_print)
+        ]
+
+        has_print_pdf = bool(matches)
+
+        if not has_print_pdf:
+            print(f"""\n⚠️ CRITICAL WARNING: No '{folder_id_print}*.pdf' files found in {layout_path}, and were not archived. 
+            \nEnsure the Printer_PDF files are spelled and capitalized in this format: {folder_id_print}
+            """)
+
+        return
+
     def copy_print_files(self, project_layout_path, archive_printer_pdfs_path, folder_id_print):
         """
         Copy print files from project layout path to archive printer PDFs path.

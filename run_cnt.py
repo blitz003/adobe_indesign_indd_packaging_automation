@@ -141,6 +141,14 @@ def main():
                 print(f"  {idx}. {file}")
         else:
             print("✅ No empty files found.")
+
+    # Check if the bot did not find "CTID_Print" files in the original project directory
+    # Returns a ⚠️ CRITICAL WARNING print if there are no "CTID_Print" files in project_layout_path
+    folder_selector.check_for_missing_print_pdf_files(
+        project_layout_path=project_layout_path,
+        folder_id_print=folder_id_print
+    )
+
     input("\nPress Enter to close the program ")
 
 if __name__ == "__main__":
