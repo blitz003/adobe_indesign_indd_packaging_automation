@@ -7,7 +7,9 @@ import sys
 import platform
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Union, Any
+from cnt.constants import CONST_PACKAGE_INDESIGN_FILE_APPLESCRIPT
+from typing import Optional, Dict, List, Union, Any
+
 
 class TKFolderSelector:
     def __init__(self):
@@ -330,7 +332,7 @@ class AppleScript:
                                     text=True)
 
             if result.returncode == 0:
-                time.sleep(4)
+                time.sleep(8)
                 print("Extensis Connect has been refreshed successfully.")
                 return True
             else:
@@ -370,9 +372,11 @@ class AppleScript:
         """
         try:
             applescript_cmd = f'''
-            tell application "Adobe InDesign 2025"
+            tell application id "com.adobe.InDesign"
                 activate
-                open "{file_path}"
+                with timeout of 1200 seconds
+                    open "{file_path}"
+                end timeout
             end tell
             '''
 
@@ -409,7 +413,7 @@ class AppleScript:
             subprocess.run(['osascript', '-e', applescript_focus_cmd], check=True)
 
             # Short pause after focusing
-            time.sleep(3)
+            time.sleep(1)
 
             # Define AppleScript to press Escape key
             applescript_escape_cmd = '''
@@ -423,7 +427,7 @@ class AppleScript:
             print("First Escape key sent")
 
             # Brief pause between key presses
-            time.sleep(1)
+            time.sleep(0.5)
 
             # Second Escape press
             subprocess.run(['osascript', '-e', applescript_escape_cmd], check=True)
@@ -519,35 +523,6 @@ class AppleScript:
     from pathlib import Path
     from typing import Optional, Dict
 
-    def select_and_process_indesign_files(self):
-        """
-        Select an InDesign file, open it, and press the "Escape" key twice to close any dialogs.
-
-        Returns:
-        - dict: The results of the processing
-        """
-        result = {"results": []}
-
-        # Step 1: Select an InDesign file
-        selected_file = self.select_indesign_file()
-
-        if selected_file:
-            # Step 2: Open the selected InDesign file
-            self.open_indesign_file(selected_file)
-
-            # Step 3: Press the Escape key twice
-            print("Handling potential dialogs...")
-            if self.press_skip_on_missing_fonts_dialog():
-                result["results"].append({"file": selected_file, "success": True})
-                print("Dialogs handled successfully.")
-            else:
-                result["results"].append({"file": selected_file, "success": False})
-                print("Error handling dialogs.")
-        else:
-            result["results"].append({"file": None, "success": False})
-            print("No file selected.")
-
-        return result
 
     def package_indesign_file(
             self,
@@ -555,7 +530,7 @@ class AppleScript:
             project_name: Optional[str] = None
     ) -> Dict[str, str | bool]:
         """
-        Package the *currently‑open* InDesign document into
+        Package the *currently-open* InDesign document into
         ~/Documents/Archived_Projects/<project_name>/<folder_id>_Layout.
 
         Args
@@ -582,55 +557,8 @@ class AppleScript:
             # Escape any quotes in the POSIX path before embedding
             dest_root_posix = str(layout_dir).replace('"', r'\"')
 
-            applescript = f'''
-    use AppleScript version "2.7"
-    use scripting additions
+            applescript = CONST_PACKAGE_INDESIGN_FILE_APPLESCRIPT
 
-    -- destination folder provided by Python
-    set destRootPOSIX to "{dest_root_posix}"
-    set destRootAlias to POSIX file destRootPOSIX as alias
-
-    tell application "Adobe InDesign 2025"
-        activate
-        if (count of documents) is 0 then
-            error "No document is open in InDesign."
-        end if
-
-        -- suppress all UI
-        set originalLevel to user interaction level of script preferences
-        set user interaction level of script preferences to never interact
-
-        try
-            set myDoc to document 1
-            set nm to name of myDoc -- e.g. "Brochure.indd"
-            if nm ends with ".indd" then set nm to text 1 thru -6 of nm
-
-            -- create a *_Packaged folder for this document
-            set pkgPathPOSIX to destRootPOSIX & "/" & nm & "_Packaged"
-            do shell script "mkdir -p " & quoted form of pkgPathPOSIX
-            set pkgFolderAlias to POSIX file pkgPathPOSIX as alias
-
-            -- package with long‑form option labels (per dictionary)
-            tell myDoc to package ¬
-                to pkgFolderAlias ¬
-                copying fonts yes ¬
-                copying linked graphics yes ¬
-                copying profiles yes ¬
-                updating graphics yes ¬
-                including hidden layers yes ¬
-                ignore preflight errors yes ¬
-                include idml no ¬
-                include pdf no ¬
-                creating report yes
-
-            set user interaction level of script preferences to originalLevel
-            return pkgPathPOSIX
-        on error errMsg number errNum
-            set user interaction level of script preferences to originalLevel
-            error errMsg number errNum
-        end try
-    end tell
-    '''
 
             # ------------------------------------------------------------------ #
             # 3. Run the AppleScript (feed via stdin instead of multiple -e flags)
@@ -668,7 +596,7 @@ class AppleScript:
         returns (paths, integer_count).  If the user cancels, both
         values are empty/zero so callers can bail out gracefully.
         """
-        root = tk.Tk();
+        root = tk.Tk()
         root.withdraw()
         folder = filedialog.askdirectory(
             title="Choose the folder that contains your InDesign files"

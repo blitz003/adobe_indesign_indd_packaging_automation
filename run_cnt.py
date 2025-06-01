@@ -94,9 +94,9 @@ def main():
             project_name=archived_project_path
         )
         if pkg["success"]:
-            print("  ✓ packaged →", pkg["message"])
+            print(f"{datetime.now():%Y-%m-%d %H:%M:%S} ✓ packaged → {pkg['message']}")
         else:
-            print("  ✗ packaging failed:", pkg.get("error"))
+            print(f"{datetime.now():%Y-%m-%d %H:%M:%S}  ✗ packaging failed:", pkg.get("error"))
 
         # STEP 3 – Always start next iteration with a fresh app
         apple_script_agent.close_indesign()
@@ -120,9 +120,9 @@ def main():
             project_name=archived_project_path
         )
         if pkg["success"]:
-            print("  ✓ packaged →", pkg["message"])
+            print(f"{datetime.now():%Y-%m-%d %H:%M:%S} ✓ packaged → {pkg['message']}")
         else:
-            print("  ✗ packaging failed:", pkg.get("error"))
+            print(f"{datetime.now():%Y-%m-%d %H:%M:%S}  ✗ packaging failed:", pkg.get("error"))
 
         # STEP 6 – Always start next iteration with a fresh app
         apple_script_agent.close_indesign()
