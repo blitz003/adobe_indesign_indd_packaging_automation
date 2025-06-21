@@ -2,6 +2,7 @@ import sys
 import os
 import time
 from cnt.cnt import TKFolderSelector, MakeDirectory, AppleScript, FileCheck
+from datetime import datetime
 
 
 def main():
