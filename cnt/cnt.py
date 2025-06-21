@@ -7,7 +7,8 @@ import sys
 import platform
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Union, Any
+from typing import Optional, Dict, List, Union, Any
+
 
 class TKFolderSelector:
     def __init__(self):
@@ -149,6 +150,37 @@ class TKFolderSelector:
                 print(f"Error creating {subdir}: {e}")
 
         return creation_status
+
+    def check_for_missing_print_pdf_files(self, project_layout_path: str, folder_id_print: str) -> bool:
+        """
+        Check whether any PDF files in `project_layout_path` start with `folder_id_print`.
+
+        Args:
+            project_layout_path (str): Absolute or relative path to the layout folder.
+            folder_id_print (str): Filename prefix that identifies the print PDFs (e.g., "11492_Print").
+
+        Returns:
+            bool: True if at least one matching file exists, False otherwise.
+        """
+        layout_path = Path(project_layout_path)
+
+        if not layout_path.is_dir():
+            raise FileNotFoundError(f"{layout_path} is not a directory or does not exist.")
+
+        # Look for PDFs that start with the required prefix
+        matches = [
+            p for p in layout_path.iterdir()
+            if p.is_file() and p.suffix.lower() == ".pdf" and p.name.startswith(folder_id_print)
+        ]
+
+        has_print_pdf = bool(matches)
+
+        if not has_print_pdf:
+            print(f"""\n⚠️ CRITICAL WARNING: No '{folder_id_print}*.pdf' files found in {layout_path}, and were not archived. 
+            \nEnsure the Printer_PDF files are spelled and capitalized in this format: {folder_id_print}
+            """)
+
+        return
 
     def copy_print_files(self, project_layout_path, archive_printer_pdfs_path, folder_id_print):
         """
@@ -330,7 +362,7 @@ class AppleScript:
                                     text=True)
 
             if result.returncode == 0:
-                time.sleep(4)
+                time.sleep(8)
                 print("Extensis Connect has been refreshed successfully.")
                 return True
             else:
@@ -370,9 +402,11 @@ class AppleScript:
         """
         try:
             applescript_cmd = f'''
-            tell application "Adobe InDesign 2025"
+            tell application id "com.adobe.InDesign"
                 activate
-                open "{file_path}"
+                with timeout of 1200 seconds
+                    open "{file_path}"
+                end timeout
             end tell
             '''
 
@@ -409,7 +443,7 @@ class AppleScript:
             subprocess.run(['osascript', '-e', applescript_focus_cmd], check=True)
 
             # Short pause after focusing
-            time.sleep(3)
+            time.sleep(1)
 
             # Define AppleScript to press Escape key
             applescript_escape_cmd = '''
@@ -423,7 +457,7 @@ class AppleScript:
             print("First Escape key sent")
 
             # Brief pause between key presses
-            time.sleep(1)
+            time.sleep(0.5)
 
             # Second Escape press
             subprocess.run(['osascript', '-e', applescript_escape_cmd], check=True)
@@ -519,35 +553,6 @@ class AppleScript:
     from pathlib import Path
     from typing import Optional, Dict
 
-    def select_and_process_indesign_files(self):
-        """
-        Select an InDesign file, open it, and press the "Escape" key twice to close any dialogs.
-
-        Returns:
-        - dict: The results of the processing
-        """
-        result = {"results": []}
-
-        # Step 1: Select an InDesign file
-        selected_file = self.select_indesign_file()
-
-        if selected_file:
-            # Step 2: Open the selected InDesign file
-            self.open_indesign_file(selected_file)
-
-            # Step 3: Press the Escape key twice
-            print("Handling potential dialogs...")
-            if self.press_skip_on_missing_fonts_dialog():
-                result["results"].append({"file": selected_file, "success": True})
-                print("Dialogs handled successfully.")
-            else:
-                result["results"].append({"file": selected_file, "success": False})
-                print("Error handling dialogs.")
-        else:
-            result["results"].append({"file": None, "success": False})
-            print("No file selected.")
-
-        return result
 
     def package_indesign_file(
             self,
@@ -555,7 +560,7 @@ class AppleScript:
             project_name: Optional[str] = None
     ) -> Dict[str, str | bool]:
         """
-        Package the *currently‑open* InDesign document into
+        Package the *currently-open* InDesign document into
         ~/Documents/Archived_Projects/<project_name>/<folder_id>_Layout.
 
         Args
@@ -583,18 +588,26 @@ class AppleScript:
             dest_root_posix = str(layout_dir).replace('"', r'\"')
 
             applescript = f'''
-    use AppleScript version "2.7"
-    use scripting additions
+use AppleScript version "2.7"
+use scripting additions
 
-    -- destination folder provided by Python
-    set destRootPOSIX to "{dest_root_posix}"
-    set destRootAlias to POSIX file destRootPOSIX as alias
+set destRootPOSIX to "{dest_root_posix}"
+set destRootAlias to POSIX file destRootPOSIX as alias
 
-    tell application "Adobe InDesign 2025"
+-------------------------------------------------------------------------------
+--  Ensure Extensis Connect has all fonts active **before** packaging
+-------------------------------------------------------------------------------
+tell application "Extensis Connect" to activate
+tell application "System Events" to tell process "Extensis Connect" ¬
+    to keystroke "r" using command down
+delay 10 -- wait while Connect re-syncs and enables fonts
+-------------------------------------------------------------------------------
+
+-- ⏱  DISABLE THE TIMEOUT FOR THE WHOLE INDESIGN SESSION
+with timeout of 1200 seconds
+    tell application id "com.adobe.InDesign"
         activate
-        if (count of documents) is 0 then
-            error "No document is open in InDesign."
-        end if
+        if (count documents) is 0 then error "No document is open in InDesign."
 
         -- suppress all UI
         set originalLevel to user interaction level of script preferences
@@ -602,7 +615,7 @@ class AppleScript:
 
         try
             set myDoc to document 1
-            set nm to name of myDoc -- e.g. "Brochure.indd"
+            set nm to name of myDoc
             if nm ends with ".indd" then set nm to text 1 thru -6 of nm
 
             -- create a *_Packaged folder for this document
@@ -610,7 +623,7 @@ class AppleScript:
             do shell script "mkdir -p " & quoted form of pkgPathPOSIX
             set pkgFolderAlias to POSIX file pkgPathPOSIX as alias
 
-            -- package with long‑form option labels (per dictionary)
+            -- package with long-form option labels (per dictionary)
             tell myDoc to package ¬
                 to pkgFolderAlias ¬
                 copying fonts yes ¬
@@ -630,7 +643,9 @@ class AppleScript:
             error errMsg number errNum
         end try
     end tell
-    '''
+end timeout
+'''
+
 
             # ------------------------------------------------------------------ #
             # 3. Run the AppleScript (feed via stdin instead of multiple -e flags)
@@ -668,7 +683,7 @@ class AppleScript:
         returns (paths, integer_count).  If the user cancels, both
         values are empty/zero so callers can bail out gracefully.
         """
-        root = tk.Tk();
+        root = tk.Tk()
         root.withdraw()
         folder = filedialog.askdirectory(
             title="Choose the folder that contains your InDesign files"

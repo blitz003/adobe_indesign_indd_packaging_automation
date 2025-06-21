@@ -2,6 +2,7 @@ import sys
 import os
 import time
 from cnt.cnt import TKFolderSelector, MakeDirectory, AppleScript, FileCheck
+from datetime import datetime
 
 
 def main():
@@ -94,9 +95,9 @@ def main():
             project_name=archived_project_path
         )
         if pkg["success"]:
-            print("  ✓ packaged →", pkg["message"])
+            print(f"{datetime.now():%Y-%m-%d %H:%M:%S} ✓ packaged → {pkg['message']}")
         else:
-            print("  ✗ packaging failed:", pkg.get("error"))
+            print(f"{datetime.now():%Y-%m-%d %H:%M:%S}  ✗ packaging failed:", pkg.get("error"))
 
         # STEP 3 – Always start next iteration with a fresh app
         apple_script_agent.close_indesign()
@@ -120,9 +121,9 @@ def main():
             project_name=archived_project_path
         )
         if pkg["success"]:
-            print("  ✓ packaged →", pkg["message"])
+            print(f"{datetime.now():%Y-%m-%d %H:%M:%S} ✓ packaged → {pkg['message']}")
         else:
-            print("  ✗ packaging failed:", pkg.get("error"))
+            print(f"{datetime.now():%Y-%m-%d %H:%M:%S}  ✗ packaging failed:", pkg.get("error"))
 
         # STEP 6 – Always start next iteration with a fresh app
         apple_script_agent.close_indesign()
@@ -141,6 +142,14 @@ def main():
                 print(f"  {idx}. {file}")
         else:
             print("✅ No empty files found.")
+
+    # Check if the bot did not find "CTID_Print" files in the original project directory
+    # Returns a ⚠️ CRITICAL WARNING print if there are no "CTID_Print" files in project_layout_path
+    folder_selector.check_for_missing_print_pdf_files(
+        project_layout_path=project_layout_path,
+        folder_id_print=folder_id_print
+    )
+
     input("\nPress Enter to close the program ")
 
 if __name__ == "__main__":
